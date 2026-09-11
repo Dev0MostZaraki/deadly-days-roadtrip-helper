@@ -44,7 +44,7 @@
 
   function applyDetectedRun(msg) {
     let changed = false;
-    if (msg.characterId && window.CHARACTERS?.[msg.characterId]) {
+    if (msg.characterId && typeof CHARACTERS !== 'undefined' && CHARACTERS[msg.characterId]) {
       state.character = msg.characterId;
       changed = true;
     }
@@ -56,7 +56,7 @@
       state.items = [];
       state.nextInstance = 1;
       for (const itemId of msg.itemIds) {
-        if (window.ITEMS?.[itemId]) state.items.push(newInstance(itemId));
+        if (typeof ITEMS !== 'undefined' && ITEMS[itemId]) state.items.push(newInstance(itemId));
       }
       changed = true;
     }
