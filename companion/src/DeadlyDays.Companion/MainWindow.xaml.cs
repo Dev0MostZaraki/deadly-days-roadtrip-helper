@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     private readonly VisionCoordinator _vision = new(new TemplateLibrary());
     private readonly AirdropConsensus _airdropConsensus = new(windowSize: 5, requiredVotes: 3, requiredConfidence: 0.72);
     private readonly BackpackConsensus _backpackConsensus = new(windowSize: 5, requiredVotes: 3);
+    private readonly BackpackInventoryConsensus _inventoryConsensus = new(windowSize: 5, requiredVotes: 3, requiredConfidence: 0.74);
     private readonly OverlayService _overlay = new();
     private readonly DispatcherTimer _timer;
     private GameWindowSnapshot? _game;
@@ -29,6 +30,7 @@ public partial class MainWindow : Window
     private VisionSnapshot? _lastVision;
     private string? _lastCandidateKey;
     private string? _lastBagKey;
+    private string? _lastInventoryKey;
     private string? _lastSourcePublishKey;
     private string? _visionStatus;
     private bool _webReady;
@@ -74,8 +76,10 @@ public partial class MainWindow : Window
         {
             _airdropConsensus.Reset();
             _backpackConsensus.Reset();
+            _inventoryConsensus.Reset();
             _lastCandidateKey = null;
             _lastBagKey = null;
+            _lastInventoryKey = null;
             _visionStatus = null;
             _overlay.Hide();
             PublishStatus();
@@ -94,15 +98,13 @@ public partial class MainWindow : Window
         var frame = _capture.Capture(_game);
         if (frame is null)
         {
-            _visionStatus = "Capture fehlgeschlagen";
+            _visionStatus = $"Capture fehlgeschlagen ({_capture.LastCaptureMode})";
             return Task.CompletedTask;
         }
 
         _lastVision = _vision.Analyze(frame);
-        var parts = new List<string>();
+        var parts = new List<string> { $"Capture {_capture.LastCaptureMode}" };
 
-        // Backpack geometry is independent from item recognition. It is only applied after
-        // several consecutive frames agree on exactly the same normalized cell polyomino.
         var bagConsensus = _backpackConsensus.Push(_vision.LastBackpack);
         if (bagConsensus.Stable && bagConsensus.Cells is { Count: > 0 })
         {
@@ -117,6 +119,21 @@ public partial class MainWindow : Window
         else if (_vision.LastBackpack is not null)
         {
             parts.Add($"Rucksack wird bestätigt · {_vision.LastBackpack.Cells.Count} Felder · {_vision.LastBackpack.Confidence:P0}");
+        }
+
+        var inventoryConsensus = _inventoryConsensus.Push(_vision.LastBackpackItems);
+        if (_vision.LastBackpackItems.Count > 0)
+            parts.Add(inventoryConsensus.Status);
+        if (inventoryConsensus.Stable && bagConsensus.Stable && bagConsensus.Cells is { Count: > 0 })
+        {
+            var inventoryKey = string.Join(';', inventoryConsensus.Items
+                .OrderBy(x => x.GeometryKey, StringComparer.Ordinal)
+                .Select(x => $"{x.ItemId}@{x.GeometryKey}"));
+            if (!string.Equals(inventoryKey, _lastInventoryKey, StringComparison.Ordinal))
+            {
+                _lastInventoryKey = inventoryKey;
+                PublishInventory(inventoryConsensus.Items, bagConsensus.Cells, inventoryConsensus.Confidence);
+            }
         }
 
         var consensus = _airdropConsensus.Push(_lastVision);
@@ -263,6 +280,43 @@ public partial class MainWindow : Window
             DateTimeOffset.UtcNow));
     }
 
+    private void PublishInventory(IReadOnlyList<BackpackItemObservation> items, IReadOnlyList<string> cells, double confidence)
+    {
+        if (!_webReady) return;
+        var save = _saveWatcher.GetCurrentSave();
+        var ids = items.Where(x => x.ItemId is not null).Select(x => x.ItemId!).ToArray();
+        Post(new CompanionDetectionMessage(
+            "companion.detection",
+            _game is { IsUsable: true },
+            $"Inventar stabil erkannt · {ids.Length} Items · {confidence:P0}",
+            null,
+            ids,
+            cells,
+            null,
+            null,
+            save?.FullName,
+            save?.Length,
+            DateTimeOffset.UtcNow));
+
+        // Rich geometry is sent separately so future UI can draw the real current layout without
+        // changing the stable public run-code format yet.
+        Post(new
+        {
+            type = "companion.inventoryGeometry",
+            confidence,
+            items = items.Select(x => new
+            {
+                itemId = x.ItemId,
+                cells = x.Cells,
+                x.WidthCells,
+                x.HeightCells,
+                x.Confidence,
+                x.VisualConfidence
+            }).ToArray(),
+            timestamp = DateTimeOffset.UtcNow
+        });
+    }
+
     private void PublishDetection(IReadOnlyList<string?> ids, IReadOnlyList<double> confidence)
     {
         if (!_webReady) return;
@@ -362,7 +416,6 @@ public partial class MainWindow : Window
         }
         catch
         {
-            // Folder opening is convenience only; the bundle has already been written.
         }
     }
 
