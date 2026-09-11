@@ -4,6 +4,7 @@
 
   const send = payload => webview.postMessage(payload);
   let lastAutoKey = '';
+  window.__DDR_COMPANION_SOURCES__ = null;
 
   function addControls() {
     const badges = document.querySelector('.badges');
@@ -13,6 +14,12 @@
       badge.className = 'badge';
       badge.textContent = 'Companion: verbunden';
       badges.appendChild(badge);
+
+      const sources = document.createElement('span');
+      sources.id = 'companionSourcesBadge';
+      sources.className = 'badge';
+      sources.textContent = 'Quellen: werden geprüft…';
+      badges.appendChild(sources);
     }
 
     const actions = document.querySelector('.hero-actions');
@@ -40,6 +47,21 @@
     if (!badge) return;
     badge.textContent = text;
     badge.classList.toggle('warn', warn);
+  }
+
+  function applySources(msg) {
+    window.__DDR_COMPANION_SOURCES__ = msg;
+    const badge = document.getElementById('companionSourcesBadge');
+    if (!badge) return;
+    const bits = [];
+    if (msg.game?.found) bits.push(`Game✓${msg.game.buildId ? ` #${msg.game.buildId}` : ''}`);
+    else bits.push('Game✗');
+    bits.push(msg.save?.found ? 'Save✓' : 'Save✗');
+    bits.push(msg.log?.found ? 'Log✓' : 'Log—');
+    badge.textContent = `Quellen: ${bits.join(' · ')}`;
+    badge.classList.toggle('warn', !msg.game?.found || !msg.save?.found || msg.game?.buildChanged === true);
+    if (msg.game?.buildChanged) badge.title = 'Eine neue Spiel-Build-ID bzw. ein neuer Content-Fingerprint wurde erkannt. Spielabhängige Daten sollten erneut validiert werden.';
+    else badge.title = msg.game?.installDirectory || '';
   }
 
   function applyDetectedRun(msg) {
@@ -106,6 +128,8 @@
       setBadge(msg.gameRunning ? 'Companion: Spiel erkannt' : 'Companion: wartet auf Spiel', !msg.gameRunning);
       applyDetectedRun(msg);
       applyAirdrop(msg);
+    } else if (msg.type === 'companion.sources') {
+      applySources(msg);
     } else if (msg.type === 'companion.learnResult') {
       setBadge(msg.ok ? `Referenz gelernt: ${msg.itemId}` : 'Referenz konnte nicht gelernt werden', !msg.ok);
     }
