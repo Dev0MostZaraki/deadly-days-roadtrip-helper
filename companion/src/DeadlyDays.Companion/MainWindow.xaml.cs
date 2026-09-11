@@ -16,15 +16,20 @@ public partial class MainWindow : Window
     private readonly GameWindowLocator _gameLocator = new();
     private readonly ScreenCaptureService _capture = new();
     private readonly SaveGameWatcher _saveWatcher = new();
+    private readonly GameInstallationService _installationService = new();
+    private readonly GameLogReader _logReader = new();
     private readonly VisionCoordinator _vision = new(new TemplateLibrary());
     private readonly AirdropConsensus _airdropConsensus = new(windowSize: 5, requiredVotes: 3, requiredConfidence: 0.72);
     private readonly BackpackConsensus _backpackConsensus = new(windowSize: 5, requiredVotes: 3);
     private readonly OverlayService _overlay = new();
     private readonly DispatcherTimer _timer;
     private GameWindowSnapshot? _game;
+    private GameInstallationSnapshot? _installation;
+    private GameLogSnapshot? _logSnapshot;
     private VisionSnapshot? _lastVision;
     private string? _lastCandidateKey;
     private string? _lastBagKey;
+    private string? _lastSourcePublishKey;
     private string? _visionStatus;
     private bool _webReady;
     private DateTimeOffset _lastScan = DateTimeOffset.MinValue;
@@ -62,6 +67,9 @@ public partial class MainWindow : Window
     private async Task TickAsync()
     {
         _game = _gameLocator.Find();
+        _installation = _installationService.GetSnapshot(_game);
+        _logSnapshot = _logReader.GetSnapshot();
+
         if (_game is null || !_game.IsUsable)
         {
             _airdropConsensus.Reset();
@@ -142,17 +150,99 @@ public partial class MainWindow : Window
     private void PublishStatus()
     {
         var save = _saveWatcher.GetCurrentSave();
+        _installation ??= _installationService.GetSnapshot(_game);
+        _logSnapshot ??= _logReader.GetSnapshot();
+
         var status = _game is { IsUsable: true }
             ? $"Deadly Days läuft · {_game.Width}×{_game.Height} · Save {(save is null ? "nicht gefunden" : "gefunden")}"
             : "Warte auf DDSurvivors-Win64-Shipping.exe…";
+
+        if (_installation is { Found: true } install)
+        {
+            var build = !string.IsNullOrWhiteSpace(install.BuildId)
+                ? $"Build {install.BuildId}"
+                : !string.IsNullOrWhiteSpace(install.ContentFingerprint)
+                    ? $"Content {install.ContentFingerprint[..Math.Min(8, install.ContentFingerprint.Length)]}"
+                    : "Build ?";
+            status += $" · Game-Dateien ✓ · {build} · {install.PakCount} PAK / {install.IoStoreCount} IoStore";
+            if (install.BuildChanged) status += " · ⚠ neuer Build erkannt";
+        }
+        else
+        {
+            status += " · Game-Dateien nicht gefunden";
+        }
+
+        if (_logSnapshot is { Found: true } log)
+            status += $" · Log ✓ ({log.RecentSignals.Count} Signale)";
+
         if (!string.IsNullOrWhiteSpace(_visionStatus)) status += $" · {_visionStatus}";
         StatusText.Text = status;
         if (!_webReady) return;
+
         Post(CompanionDetectionMessage.StatusOnly(
             _game is { IsUsable: true },
             status,
             save?.FullName,
             save?.Length));
+        PublishSources(save);
+    }
+
+    private void PublishSources(FileInfo? save)
+    {
+        if (!_webReady) return;
+        var install = _installation;
+        var log = _logSnapshot;
+        var key = string.Join('|', new[]
+        {
+            install?.Found == true ? install.InstallDirectory : null,
+            install?.BuildId,
+            install?.ContentFingerprint,
+            install?.BuildChanged == true ? "changed" : "same",
+            save?.FullName,
+            save?.Length.ToString(),
+            log?.LatestLogPath,
+            log?.Length.ToString(),
+            log?.RecentSignals.Count.ToString()
+        });
+        if (string.Equals(key, _lastSourcePublishKey, StringComparison.Ordinal)) return;
+        _lastSourcePublishKey = key;
+
+        Post(new
+        {
+            type = "companion.sources",
+            game = new
+            {
+                found = install?.Found == true,
+                installDirectory = install?.InstallDirectory,
+                executablePath = install?.ExecutablePath,
+                steamRoot = install?.SteamRoot,
+                libraryRoot = install?.LibraryRoot,
+                appManifestPath = install?.AppManifestPath,
+                buildId = install?.BuildId,
+                contentFingerprint = install?.ContentFingerprint,
+                pakCount = install?.PakCount ?? 0,
+                ioStoreCount = install?.IoStoreCount ?? 0,
+                packedBytes = install?.PackedBytes ?? 0,
+                buildChanged = install?.BuildChanged == true,
+                source = install?.Source
+            },
+            save = new
+            {
+                found = save is not null,
+                path = save?.FullName,
+                length = save?.Length,
+                lastWrite = save?.LastWriteTimeUtc
+            },
+            log = new
+            {
+                found = log?.Found == true,
+                path = log?.LatestLogPath,
+                length = log?.Length,
+                lastWrite = log?.LastWrite,
+                recentSignals = log?.RecentSignals.TakeLast(8).ToArray() ?? Array.Empty<string>()
+            },
+            timestamp = DateTimeOffset.UtcNow
+        });
     }
 
     private void PublishBag(IReadOnlyList<string> cells, double confidence)
@@ -214,9 +304,13 @@ public partial class MainWindow : Window
         {
             case "companion.ready":
                 _webReady = true;
+                _installation = _installationService.GetSnapshot(_game, force: true);
+                _logSnapshot = _logReader.GetSnapshot(force: true);
                 PublishStatus();
                 break;
             case "companion.scan":
+                _installation = _installationService.GetSnapshot(_game, force: true);
+                _logSnapshot = _logReader.GetSnapshot(force: true);
                 await ScanAsync();
                 PublishStatus();
                 break;
@@ -244,6 +338,8 @@ public partial class MainWindow : Window
 
     private async void ScanButton_Click(object sender, RoutedEventArgs e)
     {
+        _installation = _installationService.GetSnapshot(_game, force: true);
+        _logSnapshot = _logReader.GetSnapshot(force: true);
         await ScanAsync();
         PublishStatus();
     }
