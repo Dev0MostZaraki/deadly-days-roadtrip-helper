@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Deadly Days: Roadtrip – Build-, Airdrop- und Rucksack-Helper" />
+  <title>Deadly Days: Roadtrip – Run Helper</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">Deadly Days: Roadtrip</div>
+      <h1>Run Helper</h1>
+    </div>
+    <div class="badges"><span class="badge">Patch <b id="patchBadge"></b></span><span class="badge warn">Early Access</span></div>
+  </header>
+
+  <main>
+    <section class="hero card">
+      <div>
+        <h2>Entscheidet nicht nur, was „gut“ ist – sondern was <em>jetzt</em> in deinen Run passt.</h2>
+        <p>Charakter, Rucksackform, vorhandene Items, Synergien, freie Felder und Airdrop-Auswahl werden gemeinsam bewertet. Unsichere Mechaniken sind sichtbar markiert statt erfunden.</p>
+      </div>
+      <div class="hero-actions">
+        <button id="loadPreset" class="primary">Aktuellen Präsi-Run laden</button>
+        <button id="copyRun">Run-Code kopieren</button>
+        <button id="importRun">Run-Code laden</button>
+        <button id="resetRun" class="ghost">Leeren</button>
+      </div>
+    </section>
+
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="run">Run-Assistent</button>
+      <button class="tab" data-tab="characters">Charaktere</button>
+      <button class="tab" data-tab="database">Item-Datenbank</button>
+      <button class="tab" data-tab="sources">Daten & Quellen</button>
+    </div>
+
+    <section id="run" class="tab-panel active">
+      <div class="grid3">
+        <section class="card">
+          <h3>1. Run-Kontext</h3>
+          <label>Charakter<select id="characterSelect"></select></label>
+          <label>Run-Phase<select id="stageSelect"><option value="early">Early</option><option value="early-mid" selected>Early → Mid</option><option value="mid">Mid</option><option value="late">Late / Endgame</option></select></label>
+          <label>Spielziel<select id="goalSelect"><option value="balanced">Ausgewogen</option><option value="horde">Horden / AoE</option><option value="boss">Boss-DPS</option><option value="survival">Überleben</option></select></label>
+          <div id="characterInfo" class="info-box"></div>
+
+          <h3>Aktuelle Items</h3>
+          <div class="row"><select id="addItemSelect"></select><button id="addItem">+ Hinzufügen</button></div>
+          <div id="currentItems" class="chips"></div>
+        </section>
+
+        <section class="card">
+          <div class="section-head"><h3>2. Rucksackform</h3><button id="normalizeBag" class="small">Form zentrieren</button></div>
+          <p class="muted">Klicke Felder an/aus. Die Form darf versetzt sein – genau wie im Spiel.</p>
+          <div id="bagEditor" class="bag-editor" aria-label="Rucksackform-Editor"></div>
+          <div class="row spaced"><span id="bagCount"></span><span class="muted">6×6 Editor</span></div>
+        </section>
+
+        <section class="card">
+          <div class="section-head"><h3>3. Optimales Layout</h3><button id="optimize" class="primary">Optimieren</button></div>
+          <div id="layoutScore" class="score"></div>
+          <div id="layoutGrid" class="layout-grid"></div>
+          <div id="synergyList" class="synergies"></div>
+          <div id="layoutWarnings" class="warnings"></div>
+        </section>
+      </div>
+
+      <section class="card airdrop-card">
+        <div class="section-head"><div><h3>4. Airdrop: Welches Item nehmen?</h3><p class="muted">Die drei Optionen werden gegen deinen aktuellen Run gerechnet – inklusive Layout-Neuberechnung.</p></div><button id="recommend" class="primary">Airdrop bewerten</button></div>
+        <div class="airdrop-selects"><select class="candidate"></select><select class="candidate"></select><select class="candidate"></select></div>
+        <div id="recommendations" class="recommendations"></div>
+      </section>
+
+      <section class="card roadmap">
+        <h3>Was der Helper bewusst berücksichtigt</h3>
+        <div class="feature-grid">
+          <div><b>Charakter-Fit</b><span>Signaturitem und Buildrichtung ändern die Gewichtung.</span></div>
+          <div><b>Rucksackgeometrie</b><span>Ein Item kann stark sein und trotzdem in deinem Layout schlecht sein.</span></div>
+          <div><b>Synergien</b><span>Triggerbar, aufblasbar, Nah-/Fernkampf, Wurfwaffen und Support werden verknüpft.</span></div>
+          <div><b>Opportunity Cost</b><span>Die Engine darf mittelmäßige Items auslassen, aber Signaturitems werden geschützt.</span></div>
+          <div><b>Duplikate</b><span>Mehrere gleiche Items werden als eigene Instanzen gerechnet statt zusammenzufallen.</span></div>
+          <div><b>Patchstand</b><span>0.22 macht Throwables für viele Waffen-Effekte relevant.</span></div>
+          <div><b>Unsicherheit</b><span>Unverifizierte Daten werden als niedrig/mittel markiert.</span></div>
+        </div>
+      </section>
+    </section>
+
+    <section id="characters" class="tab-panel"><div id="characterCards" class="catalog"></div></section>
+    <section id="database" class="tab-panel">
+      <section class="card"><div class="section-head"><h3>Item-Datenbank</h3><input id="itemSearch" placeholder="Item, Tag oder Effekt suchen…" /></div><div id="itemTable"></div></section>
+    </section>
+    <section id="sources" class="tab-panel">
+      <section class="card"><h3>Datenmodell & Vertrauensstufen</h3><p>Der Helper trennt <b>belegte Mechanik</b>, <b>Patchänderung</b> und <b>noch zu verifizierende Layout-/Marker-Muster</b>. Dadurch soll eine fehlende Information nie als sichere Tatsache in die Empfehlung einfließen.</p><div id="sourceList"></div></section>
+    </section>
+  </main>
+
+  <footer>Inoffizielles Community-Tool. Keine Verbindung zu Pixelsplit/Sidekick/Knabe Kola. Itemdaten aus öffentlich dokumentierten Quellen; Quellen und Confidence werden pro Datensatz geführt.</footer>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
