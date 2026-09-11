@@ -65,7 +65,17 @@ Then open `http://localhost:8080`.
 
 ## GitHub Pages
 
-The site is fully static (`index.html`, `app.js`, `styles.css`). It can be served directly from the repository root. No npm install and no build step are needed.
+The site is fully static (`index.html`, `styles.css`, `data.js`, `engine.js`, `ui.js`). It can be served directly from the repository root. No npm install and no build step are needed.
+
+To publish it through GitHub Pages, open **Settings → Pages**, choose **Deploy from a branch**, then select **main** and **/(root)**. If Pages is unavailable for this private repository on the current GitHub plan, the repository must either be made public or hosted with another supported option.
+
+## Architecture
+
+- `data.js` – patch-aware characters, items, tags, shapes, sources and confidence
+- `engine.js` – legal placements, rotations, synergy scoring, backpack expansion search and whole-bag optimization
+- `ui.js` – run state, local persistence, Airdrop comparison and rendering
+- `DATA_NOTES.md` – evidence and scoring rules
+- `ROADMAP.md` – planned work toward exact combat and crafting decisions
 
 ## Product rule
 
