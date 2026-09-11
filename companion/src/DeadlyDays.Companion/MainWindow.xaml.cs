@@ -18,11 +18,13 @@ public partial class MainWindow : Window
     private readonly SaveGameWatcher _saveWatcher = new();
     private readonly VisionCoordinator _vision = new(new TemplateLibrary());
     private readonly AirdropConsensus _airdropConsensus = new(windowSize: 5, requiredVotes: 3, requiredConfidence: 0.72);
+    private readonly BackpackConsensus _backpackConsensus = new(windowSize: 5, requiredVotes: 3);
     private readonly OverlayService _overlay = new();
     private readonly DispatcherTimer _timer;
     private GameWindowSnapshot? _game;
     private VisionSnapshot? _lastVision;
     private string? _lastCandidateKey;
+    private string? _lastBagKey;
     private string? _visionStatus;
     private bool _webReady;
     private DateTimeOffset _lastScan = DateTimeOffset.MinValue;
@@ -63,7 +65,9 @@ public partial class MainWindow : Window
         if (_game is null || !_game.IsUsable)
         {
             _airdropConsensus.Reset();
+            _backpackConsensus.Reset();
             _lastCandidateKey = null;
+            _lastBagKey = null;
             _visionStatus = null;
             _overlay.Hide();
             PublishStatus();
@@ -87,24 +91,47 @@ public partial class MainWindow : Window
         }
 
         _lastVision = _vision.Analyze(frame);
+        var parts = new List<string>();
+
+        // Backpack geometry is independent from item recognition. It is only applied after
+        // several consecutive frames agree on exactly the same normalized cell polyomino.
+        var bagConsensus = _backpackConsensus.Push(_vision.LastBackpack);
+        if (bagConsensus.Stable && bagConsensus.Cells is { Count: > 0 })
+        {
+            var bagKey = string.Join('|', bagConsensus.Cells.OrderBy(x => x, StringComparer.Ordinal));
+            parts.Add($"Rucksack {bagConsensus.Cells.Count} Felder · {bagConsensus.Confidence:P0}");
+            if (!string.Equals(bagKey, _lastBagKey, StringComparison.Ordinal))
+            {
+                _lastBagKey = bagKey;
+                PublishBag(bagConsensus.Cells, bagConsensus.Confidence);
+            }
+        }
+        else if (_vision.LastBackpack is not null)
+        {
+            parts.Add($"Rucksack wird bestätigt · {_vision.LastBackpack.Cells.Count} Felder · {_vision.LastBackpack.Confidence:P0}");
+        }
+
         var consensus = _airdropConsensus.Push(_lastVision);
         if (!_lastVision.AirdropVisible)
         {
             _lastCandidateKey = null;
-            _visionStatus = $"kein Airdrop · {_vision.LearnedTemplateCount} Referenzen";
+            parts.Add($"kein Airdrop · {_vision.LearnedTemplateCount} Referenzen");
+            _visionStatus = string.Join(" · ", parts);
             return Task.CompletedTask;
         }
 
         var rawKnown = _lastVision.Candidates.Count(c => c.ItemId is not null);
         if (!consensus.Stable || consensus.ItemIds.Any(x => x is null))
         {
-            _visionStatus = $"Airdrop erkannt · {rawKnown}/3 im Einzelbild · {consensus.Status}";
+            parts.Add($"Airdrop · {rawKnown}/3 im Einzelbild · {consensus.Status}");
+            _visionStatus = string.Join(" · ", parts);
             return Task.CompletedTask;
         }
 
         var ids = consensus.ItemIds;
         var key = string.Join('|', ids!);
-        _visionStatus = $"{consensus.Status} · {string.Join(" · ", ids!)}";
+        parts.Add($"{consensus.Status} · {string.Join(" · ", ids!)}");
+        _visionStatus = string.Join(" · ", parts);
         if (key == _lastCandidateKey) return Task.CompletedTask;
 
         _lastCandidateKey = key;
@@ -126,6 +153,24 @@ public partial class MainWindow : Window
             status,
             save?.FullName,
             save?.Length));
+    }
+
+    private void PublishBag(IReadOnlyList<string> cells, double confidence)
+    {
+        if (!_webReady) return;
+        var save = _saveWatcher.GetCurrentSave();
+        Post(new CompanionDetectionMessage(
+            "companion.detection",
+            _game is { IsUsable: true },
+            $"Rucksack stabil erkannt · {cells.Count} Felder · {confidence:P0}",
+            null,
+            null,
+            cells,
+            null,
+            null,
+            save?.FullName,
+            save?.Length,
+            DateTimeOffset.UtcNow));
     }
 
     private void PublishDetection(IReadOnlyList<string?> ids, IReadOnlyList<double> confidence)
