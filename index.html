@@ -53,15 +53,15 @@
 
         <section class="card">
           <div class="section-head"><h3>2. Rucksackform</h3><button id="normalizeBag" class="small">Form zentrieren</button></div>
-          <p class="muted">Klicke Felder an/aus. Die Form darf versetzt sein – genau wie im Spiel.</p>
-          <div id="bagEditor" class="bag-editor" aria-label="Rucksackform-Editor"></div>
-          <div class="row spaced"><span id="bagCount"></span><span class="muted">6×6 Editor</span></div>
+          <p class="muted">Klicke Felder an/aus. Die Form darf versetzt sein – genau wie im Spiel. Der Canvas bildet jetzt bis zu 12×14 Zellen ab.</p>
+          <div class="bag-scroll"><div id="bagEditor" class="bag-editor" aria-label="Rucksackform-Editor"></div></div>
+          <div class="row spaced"><span id="bagCount"></span><span class="muted">12×14 Canvas</span></div>
         </section>
 
         <section class="card">
           <div class="section-head"><h3>3. Optimales Layout</h3><button id="optimize" class="primary">Optimieren</button></div>
           <div id="layoutScore" class="score"></div>
-          <div id="layoutGrid" class="layout-grid"></div>
+          <div class="layout-scroll"><div id="layoutGrid" class="layout-grid"></div></div>
           <div id="synergyList" class="synergies"></div>
           <div id="layoutWarnings" class="warnings"></div>
         </section>
@@ -98,6 +98,7 @@
 
   <footer>Inoffizielles Community-Tool. Keine Verbindung zu Pixelsplit/Sidekick/Knabe Kola. Itemdaten aus öffentlich dokumentierten Quellen; Quellen und Confidence werden pro Datensatz geführt.</footer>
   <script src="./data.js"></script>
+  <script src="./data-extra.js"></script>
   <script src="./engine.js"></script>
   <script src="./ui.js"></script>
 </body>
