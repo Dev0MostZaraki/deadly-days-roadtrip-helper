@@ -4,6 +4,7 @@
 
   const send = payload => webview.postMessage(payload);
   let lastAutoKey = '';
+  let liveGeometry = null;
   window.__DDR_COMPANION_SOURCES__ = null;
 
   function addControls() {
@@ -33,7 +34,7 @@
       const learn = document.createElement('button');
       learn.id = 'companionLearn';
       learn.textContent = '3 Angebote lernen';
-      learn.title = 'Wenn die drei Airdrop-Auswahlen unten korrekt eingestellt sind, speichert der Companion lokale Bildreferenzen.';
+      learn.title = 'Korrektur/Training: Wenn die drei Airdrop-Auswahlen unten korrekt eingestellt sind, speichert der Companion lokale Bildreferenzen.';
       learn.onclick = () => {
         const selects = [...document.querySelectorAll('.candidate')];
         selects.forEach((s, slot) => send({ type: 'companion.learnCandidate', slot, itemId: s.value }));
@@ -85,7 +86,44 @@
     if (changed) {
       save();
       renderAll();
+      if (liveGeometry) renderLiveGeometry(liveGeometry);
     }
+  }
+
+  function renderLiveGeometry(msg) {
+    liveGeometry = msg;
+    const grid = document.getElementById('layoutGrid');
+    const score = document.getElementById('layoutScore');
+    if (!grid || !score || !Array.isArray(msg.items) || !msg.items.length) return;
+
+    const owner = {};
+    for (const item of msg.items) {
+      if (!item.itemId || !ITEMS[item.itemId] || !Array.isArray(item.cells)) continue;
+      for (const c of item.cells) owner[c] = item.itemId;
+    }
+
+    const w = typeof GRID_W === 'undefined' ? 12 : GRID_W;
+    const h = typeof GRID_H === 'undefined' ? 14 : GRID_H;
+    grid.innerHTML = '';
+    grid.style.setProperty('--s','28px');
+    grid.style.gridTemplateColumns = `repeat(${w},var(--s))`;
+    grid.style.gridTemplateRows = `repeat(${h},var(--s))`;
+    grid.style.minHeight = '0';
+    for (let y=0;y<h;y++) for (let x=0;x<w;x++) {
+      const k = `${x},${y}`;
+      const d = document.createElement('div');
+      d.className = 'layout-cell' + (state.bag.has(k) ? ' bag' : '');
+      const id = owner[k];
+      if (id && ITEMS[id]) {
+        const it = ITEMS[id];
+        d.className += ' occupied ' + cellClass(it);
+        d.innerHTML = `<span class="cell-label">${shortName(it.name)}</span>`;
+        d.title = `LIVE: ${it.name}`;
+      }
+      grid.appendChild(d);
+    }
+    const conf = Number(msg.confidence || 0);
+    score.innerHTML = `<strong>LIVE</strong><span>aktuelles erkanntes Layout · ${(conf*100).toFixed(0)}% Confidence</span>`;
   }
 
   function applyAirdrop(msg) {
@@ -125,9 +163,11 @@
   webview.addEventListener('message', event => {
     const msg = event.data || {};
     if (msg.type === 'companion.detection') {
-      setBadge(msg.gameRunning ? 'Companion: Spiel erkannt' : 'Companion: wartet auf Spiel', !msg.gameRunning);
+      setBadge(msg.status || (msg.gameRunning ? 'Companion: Spiel erkannt' : 'Companion: wartet auf Spiel'), !msg.gameRunning);
       applyDetectedRun(msg);
       applyAirdrop(msg);
+    } else if (msg.type === 'companion.inventoryGeometry') {
+      renderLiveGeometry(msg);
     } else if (msg.type === 'companion.sources') {
       applySources(msg);
     } else if (msg.type === 'companion.learnResult') {
