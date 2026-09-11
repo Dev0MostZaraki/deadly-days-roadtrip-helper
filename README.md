@@ -29,7 +29,7 @@ The goal is not to reproduce a wiki or publish a static tier list. The helper tr
 
 The exact highlighted/marked-cell geometry of support items (for example Fahrradpumpe, Feuerwerk, Laufschuhe, Werkzeuggürtel) still needs to be verified in-game.
 
-Until a support item's exact mask has been recorded, the optimizer uses a clearly marked **8-neighbour approximation**. The engine already supports exact marker masks and can be upgraded item-by-item as screenshots are collected.
+Until a support item's exact mask has been recorded, the optimizer uses a clearly marked **8-neighbour approximation**. The engine already supports rotation-aware exact marker masks and can be upgraded item-by-item as screenshots are collected.
 
 Therefore:
 
@@ -67,12 +67,14 @@ Then open `http://localhost:8080`.
 
 The site is fully static (`index.html`, `styles.css`, `data.js`, `engine.js`, `ui.js`). It can be served directly from the repository root. No npm install and no build step are needed.
 
-To publish it through GitHub Pages, open **Settings → Pages**, choose **Deploy from a branch**, then select **main** and **/(root)**. If Pages is unavailable for this private repository on the current GitHub plan, the repository must either be made public or hosted with another supported option.
+A GitHub Actions Pages workflow is included in `.github/workflows/pages.yml`. GitHub currently requires the repository owner to enable the Pages site once in the repository settings; the repository `GITHUB_TOKEN` cannot create the Pages site itself.
+
+Open **Settings → Pages** and set the build/deployment source to **GitHub Actions**. After that, rerun the `Deploy GitHub Pages` workflow (or push another commit). If Pages is unavailable for this private repository on the current GitHub plan, the repository must either be made public or hosted with another supported option.
 
 ## Architecture
 
 - `data.js` – patch-aware characters, items, tags, shapes, sources and confidence
-- `engine.js` – legal placements, rotations, synergy scoring, backpack expansion search and whole-bag optimization
+- `engine.js` – legal placements, rotations, rotation-aware marker masks, synergy scoring, backpack expansion search and whole-bag optimization
 - `ui.js` – run state, local persistence, Airdrop comparison and rendering
 - `DATA_NOTES.md` – evidence and scoring rules
 - `ROADMAP.md` – planned work toward exact combat and crafting decisions
