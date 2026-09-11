@@ -13,6 +13,7 @@ public sealed class VisionCoordinator
     private BitmapSource? _lastFrame;
     private RewardPanelDetection? _lastPanel;
     private BackpackDetection? _lastBackpack;
+    private IReadOnlyList<BackpackItemObservation> _lastBackpackItems = Array.Empty<BackpackItemObservation>();
     private VisionSnapshot? _lastSnapshot;
 
     public VisionCoordinator(TemplateLibrary templates) => _templates = templates;
@@ -20,12 +21,14 @@ public sealed class VisionCoordinator
     public int LearnedTemplateCount => _templates.TemplateCount;
     public RewardPanelDetection? LastPanel => _lastPanel;
     public BackpackDetection? LastBackpack => _lastBackpack;
+    public IReadOnlyList<BackpackItemObservation> LastBackpackItems => _lastBackpackItems;
 
     public VisionSnapshot Analyze(BitmapSource frame)
     {
         _lastFrame = frame;
         _lastPanel = RewardPanelLocator.Locate(frame);
         _lastBackpack = BackpackDetector.Detect(frame, _lastPanel);
+        _lastBackpackItems = BackpackItemDetector.Detect(frame, _lastBackpack, _templates);
 
         if (_lastPanel is null)
             return _lastSnapshot = new VisionSnapshot(false, Array.Empty<RecognizedCandidate>(), DateTimeOffset.UtcNow);
@@ -52,10 +55,6 @@ public sealed class VisionCoordinator
         return true;
     }
 
-    /// <summary>
-    /// Writes a user-requested diagnostic bundle locally. It is never uploaded automatically.
-    /// The bundle is useful for calibrating unusual resolutions without changing the game or save.
-    /// </summary>
     public string? ExportDiagnosticBundle()
     {
         if (_lastFrame is null) return null;
@@ -76,6 +75,18 @@ public sealed class VisionCoordinator
                 crop.Freeze();
                 SavePng(crop, Path.Combine(root, $"candidate-{i++}.png"));
             }
+        }
+
+        var itemIndex = 1;
+        foreach (var item in _lastBackpackItems)
+        {
+            try
+            {
+                var crop = new CroppedBitmap(_lastFrame, item.Bounds);
+                crop.Freeze();
+                SavePng(crop, Path.Combine(root, $"bag-item-{itemIndex++}-{item.ItemId ?? "unknown"}.png"));
+            }
+            catch { }
         }
 
         var metadata = new
@@ -101,7 +112,17 @@ public sealed class VisionCoordinator
                 confidence = _lastBackpack.Confidence,
                 averageCellScore = _lastBackpack.AverageCellScore,
                 neighborLeak = _lastBackpack.NeighborLeak,
-                cells = _lastBackpack.Cells
+                cells = _lastBackpack.Cells,
+                items = _lastBackpackItems.Select(i => new
+                {
+                    i.ItemId,
+                    i.Cells,
+                    i.Confidence,
+                    i.VisualConfidence,
+                    i.WidthCells,
+                    i.HeightCells,
+                    bounds = new { i.Bounds.X, i.Bounds.Y, i.Bounds.Width, i.Bounds.Height }
+                }).ToArray()
             },
             candidates = _lastSnapshot?.Candidates.Select(c => new { c.ItemId, c.Confidence }).ToArray()
         };
