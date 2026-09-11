@@ -12,17 +12,21 @@ public sealed class VisionCoordinator
     private readonly TemplateLibrary _templates;
     private BitmapSource? _lastFrame;
     private RewardPanelDetection? _lastPanel;
+    private BackpackDetection? _lastBackpack;
     private VisionSnapshot? _lastSnapshot;
 
     public VisionCoordinator(TemplateLibrary templates) => _templates = templates;
 
     public int LearnedTemplateCount => _templates.TemplateCount;
     public RewardPanelDetection? LastPanel => _lastPanel;
+    public BackpackDetection? LastBackpack => _lastBackpack;
 
     public VisionSnapshot Analyze(BitmapSource frame)
     {
         _lastFrame = frame;
         _lastPanel = RewardPanelLocator.Locate(frame);
+        _lastBackpack = BackpackDetector.Detect(frame, _lastPanel);
+
         if (_lastPanel is null)
             return _lastSnapshot = new VisionSnapshot(false, Array.Empty<RecognizedCandidate>(), DateTimeOffset.UtcNow);
 
@@ -88,6 +92,16 @@ public sealed class VisionCoordinator
                 width = _lastPanel.Panel.Width,
                 height = _lastPanel.Panel.Height,
                 confidence = _lastPanel.Confidence
+            },
+            backpack = _lastBackpack is null ? null : new
+            {
+                cellSize = _lastBackpack.CellSize,
+                originX = _lastBackpack.OriginX,
+                originY = _lastBackpack.OriginY,
+                confidence = _lastBackpack.Confidence,
+                averageCellScore = _lastBackpack.AverageCellScore,
+                neighborLeak = _lastBackpack.NeighborLeak,
+                cells = _lastBackpack.Cells
             },
             candidates = _lastSnapshot?.Candidates.Select(c => new { c.ItemId, c.Confidence }).ToArray()
         };
