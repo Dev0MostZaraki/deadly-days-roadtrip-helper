@@ -10,20 +10,34 @@ function baseItemScore(it,ctx){
   return s;
 }
 
+function placementVariants(it){
+  const rotateRawLocal=points=>points.map(([x,y])=>[-y,x]);
+  let rawShape=it.shape.map(([x,y])=>[x,y]);
+  let rawMarker=it.exactMarker?.map(([x,y])=>[x,y])||null;
+  const out=[];
+  for(let turns=0;turns<(it.rotatable?4:1);turns++){
+    const minX=Math.min(...rawShape.map(p=>p[0])), minY=Math.min(...rawShape.map(p=>p[1]));
+    const shape=rawShape.map(([x,y])=>[x-minX,y-minY]).sort((a,b)=>a[1]-b[1]||a[0]-b[0]);
+    const marker=rawMarker?.map(([x,y])=>[x-minX,y-minY])||null;
+    const id=shape.map(p=>p.join(':')).join('|')+'#'+(marker?marker.map(p=>p.join(':')).sort().join('|'):'');
+    if(!out.some(v=>v.id===id)) out.push({id,shape,marker,turns});
+    rawShape=rotateRawLocal(rawShape); if(rawMarker) rawMarker=rotateRawLocal(rawMarker);
+  }
+  return out;
+}
 function placementsFor(it,bag){
   const bagKeys=bag, res=[];
-  for(const shape of rotations(it)){
+  for(const variant of placementVariants(it)){
     for(let oy=0;oy<GRID;oy++) for(let ox=0;ox<GRID;ox++){
-      const cells=translate(shape,ox,oy);
-      if(cells.every(([x,y])=>x>=0&&y>=0&&x<GRID&&y<GRID&&bagKeys.has(key(x,y)))) res.push({cells,shape,ox,oy});
+      const cells=translate(variant.shape,ox,oy);
+      if(cells.every(([x,y])=>x>=0&&y>=0&&x<GRID&&y<GRID&&bagKeys.has(key(x,y)))) res.push({cells,shape:variant.shape,marker:variant.marker,turns:variant.turns,ox,oy});
     }
   }
-  const seen=new Set(); return res.filter(p=>{const id=p.cells.map(([x,y])=>key(x,y)).sort().join('|');if(seen.has(id))return false;seen.add(id);return true});
+  const seen=new Set(); return res.filter(p=>{const id=p.cells.map(([x,y])=>key(x,y)).sort().join('|')+'#'+(p.marker?p.marker.map(([x,y])=>key(x+p.ox,y+p.oy)).sort().join('|'):'');if(seen.has(id))return false;seen.add(id);return true});
 }
 function markerCells(it,placement){
-  if(it.exactMarker){
-    // exactMarker is stored relative to the normalized, unrotated item. Rotation-aware masks will be added as field data becomes verified.
-    return new Set(it.exactMarker.map(([x,y])=>key(x+placement.ox,y+placement.oy)));
+  if(placement.marker){
+    return new Set(placement.marker.map(([x,y])=>key(x+placement.ox,y+placement.oy)));
   }
   return around8(placement.cells);
 }
