@@ -11,9 +11,10 @@
     </Grid.RowDefinitions>
     <Border Background="#161C2F" Padding="12,8" BorderBrush="#29314C" BorderThickness="0,0,0,1">
       <DockPanel>
-        <TextBlock x:Name="StatusText" Text="Companion startet…" Foreground="#D7DCEA" VerticalAlignment="Center"/>
+        <TextBlock x:Name="StatusText" Text="Companion startet…" Foreground="#D7DCEA" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Right">
           <Button x:Name="ScanButton" Content="Jetzt scannen" Padding="12,5" Margin="6,0,0,0" Click="ScanButton_Click"/>
+          <Button x:Name="DiagnosticButton" Content="Diagnose speichern" Padding="12,5" Margin="6,0,0,0" Click="DiagnosticButton_Click" ToolTip="Speichert den letzten Frame und drei Airdrop-Crops ausschließlich lokal unter %LOCALAPPDATA%\DeadlyDaysCompanion\diagnostics."/>
           <CheckBox x:Name="OverlayCheck" Content="Overlay" IsChecked="True" Foreground="White" VerticalAlignment="Center" Margin="12,0,0,0" Checked="OverlayCheck_Changed" Unchecked="OverlayCheck_Changed"/>
         </StackPanel>
       </DockPanel>
