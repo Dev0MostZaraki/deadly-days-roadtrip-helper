@@ -1,0 +1,13 @@
+<Window x:Class="DeadlyDays.Companion.Views.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="390" Height="150" WindowStyle="None" AllowsTransparency="True"
+        Background="Transparent" Topmost="True" ShowInTaskbar="False" ShowActivated="False">
+  <Border CornerRadius="14" Background="#E8171A26" BorderBrush="#8A7EE7FF" BorderThickness="1" Padding="16">
+    <StackPanel>
+      <TextBlock Text="DDR COMPANION" Foreground="#8EE7FF" FontWeight="Bold" FontSize="12"/>
+      <TextBlock x:Name="TitleText" Text="Warte auf Deadly Days…" Foreground="White" FontWeight="SemiBold" FontSize="19" Margin="0,7,0,0" TextWrapping="Wrap"/>
+      <TextBlock x:Name="DetailText" Text="" Foreground="#C9CEDA" FontSize="12" Margin="0,5,0,0" TextWrapping="Wrap"/>
+    </StackPanel>
+  </Border>
+</Window>
