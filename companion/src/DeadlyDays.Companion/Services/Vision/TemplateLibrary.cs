@@ -95,23 +95,26 @@ public sealed class TemplateLibrary
         }
     }
 
-    /// <summary>
-    /// Derived fingerprints from user-supplied 0.22.1 screenshots. They contain no game image
-    /// pixels/assets, only tiny hashes and a normalized 8x8 luma signature. This gives a fresh
-    /// install a few real live references before the local library has learned more variants.
-    /// </summary>
     private void SeedBuiltIns()
     {
-        const string p = "reward-panel-v2";
-        AddSeed("sawed_shotgun", p,
+        const string reward = "reward-panel-v2";
+        AddSeed("sawed_shotgun", reward,
             576613270618636288UL, 138943232212992UL, 71705121607581696UL,
             new byte[] {0,0,0,0,0,0,0,0,0,0,0,0,0,0,30,0,0,0,0,0,0,30,0,0,0,125,145,153,157,145,41,0,0,96,77,157,157,22,132,0,0,255,182,181,181,182,182,0,0,0,0,0,0,0,30,6,0,0,6,0,0,0,0,0});
-        AddSeed("drill", p,
+        AddSeed("drill", reward,
             145285172336558080UL, 26423041458176UL, 4735671606328329538UL,
             new byte[] {11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,215,163,11,11,11,11,11,11,68,0,11,11,11,11,11,11,255,255,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11});
-        AddSeed("baseball_bat", p,
+        AddSeed("baseball_bat", reward,
             145250471144194056UL, 144115731355927040UL, 71925170532450304UL,
             new byte[] {0,0,10,10,0,0,0,0,0,49,0,0,0,0,0,0,0,0,49,0,0,0,0,0,0,203,235,255,255,198,198,0,0,213,235,112,112,112,112,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,49,0,0,0,0,0,0});
+
+        const string backpack = "backpack-item-v1";
+        AddSeed("knabe_kola", backpack,
+            9305038959502443520UL, 108087780650745984UL, 41886375140604002UL,
+            new byte[] {85,88,88,88,88,88,88,133,85,90,76,76,76,76,90,133,133,205,205,205,155,155,75,85,85,255,23,121,11,0,60,133,133,255,11,23,23,0,166,85,133,75,11,11,11,0,60,85,85,90,75,75,75,60,90,133,133,88,88,88,88,88,88,85});
+        AddSeed("pistol", backpack,
+            9259418995210682500UL, 18446708647875706876UL, 16190705577737000706UL,
+            new byte[] {7,7,230,230,230,230,230,219,230,238,238,238,238,238,238,230,247,31,59,0,5,59,247,247,247,255,255,5,5,101,255,247,247,255,255,5,5,31,255,247,247,247,247,255,255,5,247,247,230,238,238,238,238,238,238,230,219,230,230,230,230,230,230,219});
     }
 
     private void AddSeed(string itemId, string profileId, ulong d, ulong a, ulong e, byte[] grid)
@@ -124,7 +127,6 @@ public sealed class TemplateLibrary
 
     private void Save()
     {
-        // Built-in epoch signatures are intentionally not copied into the user's learned cache.
         var all = _templates.Values.SelectMany(x => x).Where(x => x.LearnedAt != DateTimeOffset.UnixEpoch)
             .OrderBy(x => x.ItemId).ThenBy(x => x.LearnedAt).ToList();
         File.WriteAllText(_path, JsonSerializer.Serialize(all, new JsonSerializerOptions { WriteIndented = true }));
