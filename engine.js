@@ -1,9 +1,11 @@
+const GRID_W = 12;
+const GRID_H = 14;
+
 function baseItemScore(it,ctx){
   let s=it.base;
   const ch=CHARACTERS[ctx.character], gw=GOAL_WEIGHTS[ctx.goal]||{}, sm=STAGE_MOD[ctx.stage]||{};
   for(const t of it.tags){s+=(ch.weights[t]||0);s+=(gw[t]||0);s+=(sm[t]||0)}
   if(ch.signature===it.id) s+=7;
-  // Large items must earn their space; signatures get exempted from most of this penalty.
   const sizePenalty=(ch.signature===it.id?0.08:0.22)*Math.max(0,area(it)-1);
   s-=sizePenalty;
   if(it.id==='void') s+=ctx.freeSpacePotential?1:0;
@@ -28,9 +30,9 @@ function placementVariants(it){
 function placementsFor(it,bag){
   const bagKeys=bag, res=[];
   for(const variant of placementVariants(it)){
-    for(let oy=0;oy<GRID;oy++) for(let ox=0;ox<GRID;ox++){
+    for(let oy=0;oy<GRID_H;oy++) for(let ox=0;ox<GRID_W;ox++){
       const cells=translate(variant.shape,ox,oy);
-      if(cells.every(([x,y])=>x>=0&&y>=0&&x<GRID&&y<GRID&&bagKeys.has(key(x,y)))) res.push({cells,shape:variant.shape,marker:variant.marker,turns:variant.turns,ox,oy});
+      if(cells.every(([x,y])=>x>=0&&y>=0&&x<GRID_W&&y<GRID_H&&bagKeys.has(key(x,y)))) res.push({cells,shape:variant.shape,marker:variant.marker,turns:variant.turns,ox,oy});
     }
   }
   const seen=new Set(); return res.filter(p=>{const id=p.cells.map(([x,y])=>key(x,y)).sort().join('|')+'#'+(p.marker?p.marker.map(([x,y])=>key(x+p.ox,y+p.oy)).sort().join('|'):'');if(seen.has(id))return false;seen.add(id);return true});
@@ -109,7 +111,6 @@ function optimizeLayout(instances,bag,ctx,{allowDrop=false,mustInclude=null,beam
   for(const st of beam){
     if(mustInclude && !st.placed.some(i=>i.iid===mustInclude)) continue;
     const ev=evaluateLayout(st.placed,st.placements,bag,ctx);
-    // Additional penalty for dropped items so replacement cost remains visible.
     const dropPenalty=st.dropped.reduce((n,i)=>n+Math.max(0,baseItemScore(instanceItem(i),ctx)*.25),0);
     const finalScore=ev.score-dropPenalty;
     if(!best||finalScore>best.score) best={ok:true,score:finalScore,placements:st.placements,placed:st.placed,dropped:st.dropped,...ev,score:finalScore};
@@ -120,9 +121,9 @@ function optimizeLayout(instances,bag,ctx,{allowDrop=false,mustInclude=null,beam
 function expansionPlacements(expansion,bag){
   const res=[];
   for(const shape of rotations(expansion)){
-    for(let oy=0;oy<GRID;oy++) for(let ox=0;ox<GRID;ox++){
+    for(let oy=0;oy<GRID_H;oy++) for(let ox=0;ox<GRID_W;ox++){
       const cells=translate(shape,ox,oy);
-      if(cells.some(([x,y])=>x<0||y<0||x>=GRID||y>=GRID||bag.has(key(x,y)))) continue;
+      if(cells.some(([x,y])=>x<0||y<0||x>=GRID_W||y>=GRID_H||bag.has(key(x,y)))) continue;
       if(!cells.some(c=>orthNeighbors(c).some(([nx,ny])=>bag.has(key(nx,ny))))) continue;
       const newBag=new Set(bag); cells.forEach(([x,y])=>newBag.add(key(x,y)));
       res.push({cells,newBag});
@@ -144,7 +145,7 @@ function evaluateExpansion(exp,ctx,baseline){
     const score=r.score+future;
     if(!best||score>best.total) best={total:score,layout:r,newBag:p.newBag,added:p.cells,future};
   }
-  if(!best) return {ok:false,total:-Infinity,delta:-Infinity,reason:'Die Erweiterung kann im 6×6-Editor aktuell nicht sinnvoll angesetzt werden.'};
+  if(!best) return {ok:false,total:-Infinity,delta:-Infinity,reason:'Die Erweiterung kann im 12×14-Canvas aktuell nicht sinnvoll angesetzt werden.'};
   return {ok:true,...best,delta:best.total-baseline.score};
 }
 function evaluateItemCandidate(itemId,ctx,baseline){
