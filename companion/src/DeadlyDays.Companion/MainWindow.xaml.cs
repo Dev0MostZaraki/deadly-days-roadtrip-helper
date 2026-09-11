@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -16,11 +17,13 @@ public partial class MainWindow : Window
     private readonly ScreenCaptureService _capture = new();
     private readonly SaveGameWatcher _saveWatcher = new();
     private readonly VisionCoordinator _vision = new(new TemplateLibrary());
+    private readonly AirdropConsensus _airdropConsensus = new(windowSize: 5, requiredVotes: 3, requiredConfidence: 0.72);
     private readonly OverlayService _overlay = new();
     private readonly DispatcherTimer _timer;
     private GameWindowSnapshot? _game;
     private VisionSnapshot? _lastVision;
     private string? _lastCandidateKey;
+    private string? _visionStatus;
     private bool _webReady;
     private DateTimeOffset _lastScan = DateTimeOffset.MinValue;
 
@@ -28,7 +31,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _saveWatcher.SaveChanged += (_, _) => Dispatcher.Invoke(PublishStatus);
-        _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(750) };
+        _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(450) };
         _timer.Tick += async (_, _) => await TickAsync();
         Loaded += async (_, _) => await InitializeAsync();
         Closed += (_, _) => _saveWatcher.Dispose();
@@ -57,16 +60,19 @@ public partial class MainWindow : Window
     private async Task TickAsync()
     {
         _game = _gameLocator.Find();
-        PublishStatus();
         if (_game is null || !_game.IsUsable)
         {
+            _airdropConsensus.Reset();
+            _lastCandidateKey = null;
+            _visionStatus = null;
             _overlay.Hide();
+            PublishStatus();
             return;
         }
 
-        _overlay.UpdateGameStatus(_game, "Deadly Days erkannt", "Live-Erkennung aktiv");
-        if (DateTimeOffset.UtcNow - _lastScan >= TimeSpan.FromSeconds(1.2))
+        if (DateTimeOffset.UtcNow - _lastScan >= TimeSpan.FromMilliseconds(550))
             await ScanAsync();
+        PublishStatus();
     }
 
     private Task ScanAsync()
@@ -74,27 +80,35 @@ public partial class MainWindow : Window
         _lastScan = DateTimeOffset.UtcNow;
         if (_game is null || !_game.IsUsable) return Task.CompletedTask;
         var frame = _capture.Capture(_game);
-        if (frame is null) return Task.CompletedTask;
-        _lastVision = _vision.Analyze(frame);
-
-        if (_lastVision.AirdropVisible)
+        if (frame is null)
         {
-            var ids = _lastVision.Candidates.Select(c => c.ItemId).ToArray();
-            var key = string.Join('|', ids.Select(x => x ?? "?"));
-            StatusText.Text = ids.All(x => x is not null)
-                ? $"Airdrop erkannt: {string.Join(" · ", ids!)}"
-                : "Airdrop erkannt – Referenzen fehlen noch; Lernmodus möglich.";
-
-            if (key != _lastCandidateKey)
-            {
-                _lastCandidateKey = key;
-                PublishDetection(ids, _lastVision.Candidates.Select(c => c.Confidence).ToArray());
-            }
+            _visionStatus = "Capture fehlgeschlagen";
+            return Task.CompletedTask;
         }
-        else
+
+        _lastVision = _vision.Analyze(frame);
+        var consensus = _airdropConsensus.Push(_lastVision);
+        if (!_lastVision.AirdropVisible)
         {
             _lastCandidateKey = null;
+            _visionStatus = $"kein Airdrop · {_vision.LearnedTemplateCount} Referenzen";
+            return Task.CompletedTask;
         }
+
+        var rawKnown = _lastVision.Candidates.Count(c => c.ItemId is not null);
+        if (!consensus.Stable || consensus.ItemIds.Any(x => x is null))
+        {
+            _visionStatus = $"Airdrop erkannt · {rawKnown}/3 im Einzelbild · {consensus.Status}";
+            return Task.CompletedTask;
+        }
+
+        var ids = consensus.ItemIds;
+        var key = string.Join('|', ids!);
+        _visionStatus = $"{consensus.Status} · {string.Join(" · ", ids!)}";
+        if (key == _lastCandidateKey) return Task.CompletedTask;
+
+        _lastCandidateKey = key;
+        PublishDetection(ids, consensus.Confidence);
         return Task.CompletedTask;
     }
 
@@ -104,6 +118,7 @@ public partial class MainWindow : Window
         var status = _game is { IsUsable: true }
             ? $"Deadly Days läuft · {_game.Width}×{_game.Height} · Save {(save is null ? "nicht gefunden" : "gefunden")}"
             : "Warte auf DDSurvivors-Win64-Shipping.exe…";
+        if (!string.IsNullOrWhiteSpace(_visionStatus)) status += $" · {_visionStatus}";
         StatusText.Text = status;
         if (!_webReady) return;
         Post(CompanionDetectionMessage.StatusOnly(
@@ -120,7 +135,7 @@ public partial class MainWindow : Window
         Post(new CompanionDetectionMessage(
             "companion.detection",
             _game is { IsUsable: true },
-            "Airdrop erkannt",
+            "Airdrop stabil erkannt",
             null,
             null,
             null,
@@ -158,13 +173,17 @@ public partial class MainWindow : Window
                 break;
             case "companion.scan":
                 await ScanAsync();
+                PublishStatus();
                 break;
             case "companion.learnCandidate":
                 if (msg.Slot is int slot && !string.IsNullOrWhiteSpace(msg.ItemId))
                 {
                     var ok = _vision.LearnCandidate(slot, msg.ItemId!);
+                    _airdropConsensus.Reset();
+                    _lastCandidateKey = null;
                     Post(new { type = "companion.learnResult", ok, slot, itemId = msg.ItemId });
                     if (ok) await ScanAsync();
+                    PublishStatus();
                 }
                 break;
             case "companion.overlay":
@@ -178,7 +197,33 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void ScanButton_Click(object sender, RoutedEventArgs e) => await ScanAsync();
+    private async void ScanButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ScanAsync();
+        PublishStatus();
+    }
+
+    private void DiagnosticButton_Click(object sender, RoutedEventArgs e)
+    {
+        var path = _vision.ExportDiagnosticBundle();
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            _visionStatus = "Noch kein Frame für Diagnose vorhanden";
+            PublishStatus();
+            return;
+        }
+
+        _visionStatus = $"Diagnose lokal gespeichert: {path}";
+        PublishStatus();
+        try
+        {
+            Process.Start(new ProcessStartInfo("explorer.exe", path) { UseShellExecute = true });
+        }
+        catch
+        {
+            // Folder opening is convenience only; the bundle has already been written.
+        }
+    }
 
     private void OverlayCheck_Changed(object sender, RoutedEventArgs e)
     {
