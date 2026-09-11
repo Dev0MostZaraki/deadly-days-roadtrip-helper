@@ -17,6 +17,7 @@ public sealed class TemplateLibrary
         Directory.CreateDirectory(root);
         _path = Path.Combine(root, "item-signatures-v2.json");
         Load();
+        SeedBuiltIns();
     }
 
     public int TemplateCount => _templates.Values.Sum(x => x.Count);
@@ -29,11 +30,9 @@ public sealed class TemplateLibrary
             _templates[itemId] = list;
         }
 
-        // Avoid collecting dozens of essentially identical samples.
         if (list.Any(x => x.ProfileId == profileId && VisualFingerprint.Distance(x.Signature, signature) <= 0.045)) return;
         list.Add(new SignatureTemplate(itemId, signature, DateTimeOffset.UtcNow, profileId));
 
-        // Keep several real-world samples (different upgrade colors/resolutions), but cap local growth.
         var sameProfile = list.Where(x => x.ProfileId == profileId).OrderByDescending(x => x.LearnedAt).ToList();
         if (sameProfile.Count > 12)
         {
@@ -56,7 +55,6 @@ public sealed class TemplateLibrary
                 .ToArray();
             if (distances.Length == 0) continue;
 
-            // The nearest sample dominates, with a small benefit from repeated agreement.
             var aggregate = distances[0];
             if (distances.Length >= 2) aggregate = aggregate * 0.82 + distances[1] * 0.18;
             byItem.Add((pair.Key, aggregate));
@@ -68,7 +66,6 @@ public sealed class TemplateLibrary
         var secondDistance = ranked.Length > 1 ? ranked[1].Distance : 1.0;
         var margin = Math.Max(0, secondDistance - best.Distance);
 
-        // Conservative thresholds: a wrong automatic pick is worse than asking for one correction.
         var tooFar = best.Distance > 0.31;
         var ambiguous = ranked.Length > 1 && margin < 0.055;
         var distanceConfidence = Math.Clamp(1.0 - best.Distance / 0.36, 0, 1);
@@ -95,13 +92,41 @@ public sealed class TemplateLibrary
         }
         catch
         {
-            // A corrupt local template cache should never block the companion from starting.
         }
+    }
+
+    /// <summary>
+    /// Derived fingerprints from user-supplied 0.22.1 screenshots. They contain no game image
+    /// pixels/assets, only tiny hashes and a normalized 8x8 luma signature. This gives a fresh
+    /// install a few real live references before the local library has learned more variants.
+    /// </summary>
+    private void SeedBuiltIns()
+    {
+        const string p = "reward-panel-v2";
+        AddSeed("sawed_shotgun", p,
+            576613270618636288UL, 138943232212992UL, 71705121607581696UL,
+            new byte[] {0,0,0,0,0,0,0,0,0,0,0,0,0,0,30,0,0,0,0,0,0,30,0,0,0,125,145,153,157,145,41,0,0,96,77,157,157,22,132,0,0,255,182,181,181,182,182,0,0,0,0,0,0,0,30,6,0,0,6,0,0,0,0,0});
+        AddSeed("drill", p,
+            145285172336558080UL, 26423041458176UL, 4735671606328329538UL,
+            new byte[] {11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,215,163,11,11,11,11,11,11,68,0,11,11,11,11,11,11,255,255,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11});
+        AddSeed("baseball_bat", p,
+            145250471144194056UL, 144115731355927040UL, 71925170532450304UL,
+            new byte[] {0,0,10,10,0,0,0,0,0,49,0,0,0,0,0,0,0,0,49,0,0,0,0,0,0,203,235,255,255,198,198,0,0,213,235,112,112,112,112,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,49,0,0,0,0,0,0});
+    }
+
+    private void AddSeed(string itemId, string profileId, ulong d, ulong a, ulong e, byte[] grid)
+    {
+        if (!_templates.TryGetValue(itemId, out var list)) _templates[itemId] = list = new();
+        var sig = new VisualSignature(d, a, e, grid);
+        if (list.Any(x => x.ProfileId == profileId && VisualFingerprint.Distance(x.Signature, sig) <= 0.01)) return;
+        list.Add(new SignatureTemplate(itemId, sig, DateTimeOffset.UnixEpoch, profileId));
     }
 
     private void Save()
     {
-        var all = _templates.Values.SelectMany(x => x).OrderBy(x => x.ItemId).ThenBy(x => x.LearnedAt).ToList();
+        // Built-in epoch signatures are intentionally not copied into the user's learned cache.
+        var all = _templates.Values.SelectMany(x => x).Where(x => x.LearnedAt != DateTimeOffset.UnixEpoch)
+            .OrderBy(x => x.ItemId).ThenBy(x => x.LearnedAt).ToList();
         File.WriteAllText(_path, JsonSerializer.Serialize(all, new JsonSerializerOptions { WriteIndented = true }));
     }
 }
