@@ -18,7 +18,7 @@ public sealed record BackpackDetection(
 
 /// <summary>
 /// Detects the visible active backpack polyomino without fixed screen coordinates. The game canvas
-/// can grow up to 12 columns x 14 rows, so the detector searches the full usable right-side canvas
+/// can grow up to 14 columns x 12 rows, so the detector searches the full usable right-side canvas
 /// instead of assuming the early-game 6x6-ish area.
 /// </summary>
 public static class BackpackDetector
@@ -69,16 +69,16 @@ public static class BackpackDetector
             if (refined is null) continue;
             var box = refined.Value;
 
-            if (box.Width < height * 0.12 || box.Width > height * 0.80) continue;
-            if (box.Height < height * 0.12 || box.Height > height * 0.93) continue;
+            if (box.Width < height * 0.12 || box.Width > height * 0.92) continue;
+            if (box.Height < height * 0.12 || box.Height > height * 0.84) continue;
             if (box.X + box.Width * 0.5 < width * 0.34) continue;
 
             // 0.22.1 reference screenshots: roughly 64 px cell pitch and ~20 px leather padding at 1080p.
             var pitch = height * (64.0 / 1080.0);
             var padding = height * (20.0 / 1080.0);
-            var columns = FitDimension(box.Width, pitch, padding, 12);
-            var rows = FitDimension(box.Height, pitch, padding, 14);
-            if (columns is < 1 or > 12 || rows is < 1 or > 14) continue;
+            var columns = FitDimension(box.Width, pitch, padding, 14);
+            var rows = FitDimension(box.Height, pitch, padding, 12);
+            if (columns is < 1 or > 14 || rows is < 1 or > 12) continue;
 
             var widthError = Math.Abs(box.Width - (columns * pitch + 2 * padding)) / pitch;
             var heightError = Math.Abs(box.Height - (rows * pitch + 2 * padding)) / pitch;
