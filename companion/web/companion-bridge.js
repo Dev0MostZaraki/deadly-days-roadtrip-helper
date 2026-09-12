@@ -57,12 +57,22 @@
     const bits = [];
     if (msg.game?.found) bits.push(`Game✓${msg.game.buildId ? ` #${msg.game.buildId}` : ''}`);
     else bits.push('Game✗');
+    if (msg.gameDataIndex?.ready) bits.push(`Index✓ ${msg.gameDataIndex.candidateFiles ?? 0}`);
+    else bits.push('Index—');
     bits.push(msg.save?.found ? 'Save✓' : 'Save✗');
     bits.push(msg.log?.found ? 'Log✓' : 'Log—');
+    if (msg.ue4ss?.live) bits.push(`UE4SS✓${msg.ue4ss.discoveryCandidates ? ` ${msg.ue4ss.discoveryCandidates}` : ''}`);
+    else if (msg.ue4ss?.fileFound) bits.push('UE4SS stale');
+    else bits.push('UE4SS—');
     badge.textContent = `Quellen: ${bits.join(' · ')}`;
     badge.classList.toggle('warn', !msg.game?.found || !msg.save?.found || msg.game?.buildChanged === true);
-    if (msg.game?.buildChanged) badge.title = 'Eine neue Spiel-Build-ID bzw. ein neuer Content-Fingerprint wurde erkannt. Spielabhängige Daten sollten erneut validiert werden.';
-    else badge.title = msg.game?.installDirectory || '';
+
+    const title = [];
+    if (msg.game?.installDirectory) title.push(`Game: ${msg.game.installDirectory}`);
+    if (msg.gameDataIndex?.path) title.push(`Index: ${msg.gameDataIndex.path}`);
+    if (msg.ue4ss?.telemetryPath) title.push(`Bridge: ${msg.ue4ss.telemetryPath}`);
+    if (msg.game?.buildChanged) title.push('WARNUNG: neuer Spiel-Build erkannt; spielabhängige Daten erneut validieren.');
+    badge.title = title.join('\n');
   }
 
   function applyDetectedRun(msg) {
@@ -102,8 +112,8 @@
       for (const c of item.cells) owner[c] = item.itemId;
     }
 
-    const w = typeof GRID_W === 'undefined' ? 12 : GRID_W;
-    const h = typeof GRID_H === 'undefined' ? 14 : GRID_H;
+    const w = typeof GRID_W === 'undefined' ? 14 : GRID_W;
+    const h = typeof GRID_H === 'undefined' ? 12 : GRID_H;
     grid.innerHTML = '';
     grid.style.setProperty('--s','28px');
     grid.style.gridTemplateColumns = `repeat(${w},var(--s))`;
