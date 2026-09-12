@@ -1,5 +1,5 @@
-const GRID_W = 12;
-const GRID_H = 14;
+const GRID_W = 14;
+const GRID_H = 12;
 
 function baseItemScore(it,ctx){
   let s=it.base;
@@ -145,7 +145,7 @@ function evaluateExpansion(exp,ctx,baseline){
     const score=r.score+future;
     if(!best||score>best.total) best={total:score,layout:r,newBag:p.newBag,added:p.cells,future};
   }
-  if(!best) return {ok:false,total:-Infinity,delta:-Infinity,reason:'Die Erweiterung kann im 12×14-Canvas aktuell nicht sinnvoll angesetzt werden.'};
+  if(!best) return {ok:false,total:-Infinity,delta:-Infinity,reason:'Die Erweiterung kann im 14×12-Canvas aktuell nicht sinnvoll angesetzt werden.'};
   return {ok:true,...best,delta:best.total-baseline.score};
 }
 function evaluateItemCandidate(itemId,ctx,baseline){
