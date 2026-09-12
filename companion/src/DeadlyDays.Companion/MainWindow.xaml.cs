@@ -17,7 +17,9 @@ public partial class MainWindow : Window
     private readonly ScreenCaptureService _capture = new();
     private readonly SaveGameWatcher _saveWatcher = new();
     private readonly GameInstallationService _installationService = new();
+    private readonly GameDataIndexService _gameDataIndexService = new();
     private readonly GameLogReader _logReader = new();
+    private readonly Ue4ssTelemetryService _ue4ssTelemetryService = new();
     private readonly VisionCoordinator _vision = new(new TemplateLibrary());
     private readonly AirdropConsensus _airdropConsensus = new(windowSize: 5, requiredVotes: 3, requiredConfidence: 0.72);
     private readonly BackpackConsensus _backpackConsensus = new(windowSize: 5, requiredVotes: 3);
@@ -26,7 +28,9 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _timer;
     private GameWindowSnapshot? _game;
     private GameInstallationSnapshot? _installation;
+    private GameDataIndexSnapshot? _gameDataIndex;
     private GameLogSnapshot? _logSnapshot;
+    private Ue4ssTelemetrySnapshot? _ue4ssSnapshot;
     private VisionSnapshot? _lastVision;
     private string? _lastCandidateKey;
     private string? _lastBagKey;
@@ -34,6 +38,7 @@ public partial class MainWindow : Window
     private string? _lastSourcePublishKey;
     private string? _visionStatus;
     private bool _webReady;
+    private bool _indexingGameData;
     private DateTimeOffset _lastScan = DateTimeOffset.MinValue;
 
     public MainWindow()
@@ -71,6 +76,8 @@ public partial class MainWindow : Window
         _game = _gameLocator.Find();
         _installation = _installationService.GetSnapshot(_game);
         _logSnapshot = _logReader.GetSnapshot();
+        _ue4ssSnapshot = _ue4ssTelemetryService.GetSnapshot();
+        await EnsureGameDataIndexAsync();
 
         if (_game is null || !_game.IsUsable)
         {
@@ -89,6 +96,26 @@ public partial class MainWindow : Window
         if (DateTimeOffset.UtcNow - _lastScan >= TimeSpan.FromMilliseconds(550))
             await ScanAsync();
         PublishStatus();
+    }
+
+    private async Task EnsureGameDataIndexAsync(bool force = false)
+    {
+        if (_indexingGameData || _installation is not { Found: true }) return;
+        if (!force && _gameDataIndex is { Ready: true } current &&
+            string.Equals(current.BuildId, _installation.BuildId, StringComparison.Ordinal) &&
+            string.Equals(current.ContentFingerprint, _installation.ContentFingerprint, StringComparison.Ordinal))
+            return;
+
+        _indexingGameData = true;
+        try
+        {
+            var installation = _installation;
+            _gameDataIndex = await Task.Run(() => _gameDataIndexService.BuildIndex(installation, force));
+        }
+        finally
+        {
+            _indexingGameData = false;
+        }
     }
 
     private Task ScanAsync()
@@ -169,6 +196,7 @@ public partial class MainWindow : Window
         var save = _saveWatcher.GetCurrentSave();
         _installation ??= _installationService.GetSnapshot(_game);
         _logSnapshot ??= _logReader.GetSnapshot();
+        _ue4ssSnapshot ??= _ue4ssTelemetryService.GetSnapshot();
 
         var status = _game is { IsUsable: true }
             ? $"Deadly Days läuft · {_game.Width}×{_game.Height} · Save {(save is null ? "nicht gefunden" : "gefunden")}"
@@ -189,8 +217,20 @@ public partial class MainWindow : Window
             status += " · Game-Dateien nicht gefunden";
         }
 
+        if (_gameDataIndex is { Ready: true } index)
+            status += $" · Index ✓ {index.TotalFiles} Dateien / {index.CandidateFiles} Kandidaten";
+        else if (_indexingGameData)
+            status += " · Index läuft…";
+
         if (_logSnapshot is { Found: true } log)
             status += $" · Log ✓ ({log.RecentSignals.Count} Signale)";
+
+        if (_ue4ssSnapshot is { Live: true } bridge)
+            status += $" · UE4SS Bridge LIVE v{bridge.BridgeVersion ?? "?"} · Discovery {bridge.DiscoveryCandidates}";
+        else if (_ue4ssSnapshot is { FileFound: true })
+            status += " · UE4SS Bridge stale/offline";
+        else
+            status += " · UE4SS Bridge nicht verbunden";
 
         if (!string.IsNullOrWhiteSpace(_visionStatus)) status += $" · {_visionStatus}";
         StatusText.Text = status;
@@ -208,18 +248,26 @@ public partial class MainWindow : Window
     {
         if (!_webReady) return;
         var install = _installation;
+        var index = _gameDataIndex;
         var log = _logSnapshot;
+        var bridge = _ue4ssSnapshot;
         var key = string.Join('|', new[]
         {
             install?.Found == true ? install.InstallDirectory : null,
             install?.BuildId,
             install?.ContentFingerprint,
             install?.BuildChanged == true ? "changed" : "same",
+            index?.Ready == true ? index.IndexPath : null,
+            index?.TotalFiles.ToString(),
+            index?.CandidateFiles.ToString(),
             save?.FullName,
             save?.Length.ToString(),
             log?.LatestLogPath,
             log?.Length.ToString(),
-            log?.RecentSignals.Count.ToString()
+            log?.RecentSignals.Count.ToString(),
+            bridge?.Live == true ? "bridge-live" : bridge?.FileFound == true ? "bridge-stale" : "bridge-none",
+            bridge?.LastTimestamp?.ToString("O"),
+            bridge?.DiscoveryCandidates.ToString()
         });
         if (string.Equals(key, _lastSourcePublishKey, StringComparison.Ordinal)) return;
         _lastSourcePublishKey = key;
@@ -243,6 +291,18 @@ public partial class MainWindow : Window
                 buildChanged = install?.BuildChanged == true,
                 source = install?.Source
             },
+            gameDataIndex = new
+            {
+                ready = index?.Ready == true,
+                path = index?.IndexPath,
+                totalFiles = index?.TotalFiles ?? 0,
+                containerFiles = index?.ContainerFiles ?? 0,
+                looseUnrealAssets = index?.LooseUnrealAssets ?? 0,
+                localizationFiles = index?.LocalizationFiles ?? 0,
+                plainDataFiles = index?.PlainDataFiles ?? 0,
+                candidateFiles = index?.CandidateFiles ?? 0,
+                error = index?.Error
+            },
             save = new
             {
                 found = save is not null,
@@ -257,6 +317,19 @@ public partial class MainWindow : Window
                 length = log?.Length,
                 lastWrite = log?.LastWrite,
                 recentSignals = log?.RecentSignals.TakeLast(8).ToArray() ?? Array.Empty<string>()
+            },
+            ue4ss = new
+            {
+                fileFound = bridge?.FileFound == true,
+                live = bridge?.Live == true,
+                telemetryPath = bridge?.TelemetryPath,
+                lastTimestamp = bridge?.LastTimestamp,
+                lastEventType = bridge?.LastEventType,
+                bridgeVersion = bridge?.BridgeVersion,
+                discoveryCandidates = bridge?.DiscoveryCandidates ?? 0,
+                discoveryReason = bridge?.LastDiscoveryReason,
+                recentRelevantObjects = bridge?.RecentRelevantObjects.TakeLast(20).ToArray() ?? Array.Empty<string>(),
+                error = bridge?.Error
             },
             timestamp = DateTimeOffset.UtcNow
         });
@@ -298,8 +371,6 @@ public partial class MainWindow : Window
             save?.Length,
             DateTimeOffset.UtcNow));
 
-        // Rich geometry is sent separately so future UI can draw the real current layout without
-        // changing the stable public run-code format yet.
         Post(new
         {
             type = "companion.inventoryGeometry",
@@ -360,11 +431,15 @@ public partial class MainWindow : Window
                 _webReady = true;
                 _installation = _installationService.GetSnapshot(_game, force: true);
                 _logSnapshot = _logReader.GetSnapshot(force: true);
+                _ue4ssSnapshot = _ue4ssTelemetryService.GetSnapshot(force: true);
+                await EnsureGameDataIndexAsync(force: true);
                 PublishStatus();
                 break;
             case "companion.scan":
                 _installation = _installationService.GetSnapshot(_game, force: true);
                 _logSnapshot = _logReader.GetSnapshot(force: true);
+                _ue4ssSnapshot = _ue4ssTelemetryService.GetSnapshot(force: true);
+                await EnsureGameDataIndexAsync(force: true);
                 await ScanAsync();
                 PublishStatus();
                 break;
@@ -394,6 +469,8 @@ public partial class MainWindow : Window
     {
         _installation = _installationService.GetSnapshot(_game, force: true);
         _logSnapshot = _logReader.GetSnapshot(force: true);
+        _ue4ssSnapshot = _ue4ssTelemetryService.GetSnapshot(force: true);
+        await EnsureGameDataIndexAsync(force: true);
         await ScanAsync();
         PublishStatus();
     }
