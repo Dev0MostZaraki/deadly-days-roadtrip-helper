@@ -1,4 +1,4 @@
-// 12x14 live-canvas overrides. Kept separate from the original prototype UI to make the migration explicit.
+// 14x12 live-canvas overrides. Kept separate from the original prototype UI to make the migration explicit.
 renderBagEditor = function(){
   bagEditor.innerHTML='';
   bagEditor.style.gridTemplateColumns=`repeat(${GRID_W},28px)`;
